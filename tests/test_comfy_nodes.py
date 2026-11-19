@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 import struct
 import sys
 import tempfile
@@ -249,7 +248,7 @@ class GLBTests(unittest.TestCase):
         original_bin = before.binary_blob()
         original_views = [v.to_dict() for v in before.bufferViews]
         original_materials = [m.to_dict() for m in before.materials]
-        original_primitive = asdict(before.meshes[0].primitives[0])
+        original_primitive = json.loads(before.to_json())["meshes"][0]["primitives"][0]
         animated = self.dir/"animated.glb"
         result = glb_bridge.bake_motion(self.source, bvh, "walk", animated)
         self.assertEqual(result["joint_count"], 2)
@@ -259,7 +258,7 @@ class GLBTests(unittest.TestCase):
         self.assertEqual([v.to_dict() for v in out.bufferViews[:len(original_views)]],
                          original_views)
         self.assertEqual([m.to_dict() for m in out.materials], original_materials)
-        self.assertEqual(asdict(out.meshes[0].primitives[0]), original_primitive)
+        self.assertEqual(json.loads(out.to_json())["meshes"][0]["primitives"][0], original_primitive)
         for attr in ("NORMAL", "TANGENT", "JOINTS_0", "WEIGHTS_0"):
             self.assertEqual(getattr(out.meshes[0].primitives[0].attributes, attr),
                              getattr(before.meshes[0].primitives[0].attributes, attr))
