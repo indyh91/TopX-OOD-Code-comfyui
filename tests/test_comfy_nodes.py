@@ -140,7 +140,7 @@ class ValidationTests(unittest.TestCase):
         )
         self.assertEqual(args[0], sys.executable)
         self.assertIn("--forward=-Z", args)
-        self.assertIn("C:/My Rig/rig.bvh", args)
+        self.assertIn(str(Path("C:/My Rig/rig.bvh")), args)
         self.assertNotIn("--text", args)
         self.assertIn("--text_emb", args)
 
