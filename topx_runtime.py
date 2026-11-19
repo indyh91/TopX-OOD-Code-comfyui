@@ -46,20 +46,13 @@ def _valid_npy(path: Path, shape: tuple[int | None, ...]) -> bool:
     if not path.is_file():
         return False
     try:
-        with np.load(path, allow_pickle=False, mmap_mode="r") as a:
-            pass
-    except TypeError:
-        # mmap returns an ndarray, not a context manager.
-        try:
-            a = np.load(path, allow_pickle=False, mmap_mode="r")
-            return (a.dtype == np.float32 and a.ndim == len(shape)
-                    and all(b is None or a.shape[i] == b for i, b in enumerate(shape))
-                    and np.isfinite(a).all())
-        except (OSError, ValueError):
-            return False
-    except (OSError, ValueError):
+        a = np.load(path, allow_pickle=False, mmap_mode="r")
+        return (a.dtype == np.float32 and a.ndim == len(shape)
+                and all(dim is None or a.shape[i] == dim
+                        for i, dim in enumerate(shape))
+                and np.isfinite(a).all())
+    except (OSError, ValueError, TypeError):
         return False
-    return False
 
 
 def _atomic_save_npy(path: Path, array: np.ndarray) -> None:
@@ -174,6 +167,7 @@ def encode_embeddings(
     auto_prefix_caption: bool = True,
     timeout_seconds: int = 3600,
     device: str = "cuda",
+    before_worker=None,
 ) -> dict:
     """Return content-addressed cached embeddings; never launch worker on a full hit.
 
@@ -217,6 +211,8 @@ def encode_embeddings(
             "body_plan": body_plan, "device": device,
         }
         job_dir = cache_dir / "logs" / ("encode_" + uuid.uuid4().hex)
+        if before_worker is not None:
+            before_worker()
         _run_worker("encode", req, job_dir, timeout_seconds)
     for path in paths:
         if not _valid_npy(path, (4096,)):
