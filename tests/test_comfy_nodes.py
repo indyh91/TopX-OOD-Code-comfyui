@@ -284,6 +284,15 @@ class GLBTests(unittest.TestCase):
                 np.testing.assert_allclose(np.linalg.norm(track, axis=-1), 1, atol=1e-5)
                 self.assertTrue((np.sum(track[:-1]*track[1:], axis=-1) >= 0).all())
 
+    def test_refuse_existing_animated_glb_output(self):
+        bvh = self.dir/"rest.bvh"
+        glb_bridge.extract_skeleton(self.source, bvh)
+        existing = self.dir/"existing.glb"
+        existing.write_bytes(b"do not overwrite")
+        with self.assertRaises(FileExistsError):
+            glb_bridge.bake_motion(self.source, bvh, "rest", existing)
+        self.assertEqual(existing.read_bytes(), b"do not overwrite")
+
     def test_refuse_nonrigid_bind_transforms(self):
         from pygltflib import GLTF2
         gltf = GLTF2().load_binary(str(self.source))
