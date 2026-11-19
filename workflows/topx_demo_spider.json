@@ -1,0 +1,86 @@
+{
+  "last_node_id": 1,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "TopXGenerateDemo",
+      "pos": [
+        120,
+        120
+      ],
+      "size": [
+        350,
+        313
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "preview_image",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "bvh_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "npz_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "gif_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "diagnostic",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "result_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "batch_result_json",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXGenerateDemo"
+      },
+      "widgets_values": [
+        "spider / 1",
+        -1,
+        0,
+        50,
+        2,
+        true,
+        "",
+        3600,
+        true
+      ]
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

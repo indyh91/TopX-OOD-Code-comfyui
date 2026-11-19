@@ -1,0 +1,387 @@
+{
+  "last_node_id": 4,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "TopXExtractSkeletonGLB",
+      "pos": [
+        80,
+        140
+      ],
+      "size": [
+        350,
+        260
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "bvh_path",
+          "type": "STRING",
+          "links": [
+            1,
+            2
+          ]
+        },
+        {
+          "name": "joint_names_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "joint_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "rest_frame",
+          "type": "INT",
+          "links": [
+            3,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXExtractSkeletonGLB"
+      },
+      "widgets_values": [
+        "C:\\path\\to\\rigged_character.glb",
+        "+Y",
+        "+Z"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "TopXEncodeEmbeddings",
+      "pos": [
+        530,
+        100
+      ],
+      "size": [
+        350,
+        367
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "skeleton_path",
+          "type": "STRING",
+          "link": 1
+        },
+        {
+          "name": "rest_frame",
+          "type": "INT",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_embedding_path",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        },
+        {
+          "name": "joint_embedding_path",
+          "type": "STRING",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "skeleton_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "text_embedding_paths_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "metadata_json",
+          "type": "STRING",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "cache_hit",
+          "type": "BOOLEAN",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXEncodeEmbeddings"
+      },
+      "widgets_values": [
+        "An object walks forward.",
+        "",
+        "",
+        "+Y",
+        "+Z",
+        -1,
+        false,
+        true,
+        "cuda",
+        true,
+        3600
+      ]
+    },
+    {
+      "id": 3,
+      "type": "TopXGenerateMotion",
+      "pos": [
+        1000,
+        100
+      ],
+      "size": [
+        350,
+        718
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "skeleton_path",
+          "type": "STRING",
+          "link": 2
+        },
+        {
+          "name": "rest_frame",
+          "type": "INT",
+          "link": 4
+        },
+        {
+          "name": "text_embedding_path",
+          "type": "STRING",
+          "link": 5
+        },
+        {
+          "name": "joint_embedding_path",
+          "type": "STRING",
+          "link": 6
+        },
+        {
+          "name": "embedding_metadata_json",
+          "type": "STRING",
+          "link": 8
+        },
+        {
+          "name": "encoding_cache_hit",
+          "type": "BOOLEAN",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "preview_image",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "bvh_path",
+          "type": "STRING",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "npz_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "gif_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "diagnostic",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "result_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "batch_result_json",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXGenerateMotion"
+      },
+      "widgets_values": [
+        "",
+        "precomputed",
+        "",
+        "",
+        "",
+        120,
+        7,
+        50,
+        2,
+        "+Y",
+        "+Z",
+        -1,
+        false,
+        false,
+        true,
+        "cuda",
+        true,
+        "",
+        "motion",
+        3600,
+        false,
+        true,
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "TopXBakeMotionGLB",
+      "pos": [
+        1440,
+        140
+      ],
+      "size": [
+        350,
+        260
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "motion_path",
+          "type": "STRING",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "animated_glb_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "result_json",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXBakeMotionGLB"
+      },
+      "widgets_values": [
+        "C:\\path\\to\\rigged_character.glb",
+        "",
+        "TopXWalk",
+        "",
+        "+Y",
+        "+Z"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      0,
+      "STRING"
+    ],
+    [
+      3,
+      1,
+      3,
+      2,
+      1,
+      "INT"
+    ],
+    [
+      4,
+      1,
+      3,
+      3,
+      1,
+      "INT"
+    ],
+    [
+      5,
+      2,
+      0,
+      3,
+      2,
+      "STRING"
+    ],
+    [
+      6,
+      2,
+      1,
+      3,
+      3,
+      "STRING"
+    ],
+    [
+      7,
+      3,
+      1,
+      4,
+      0,
+      "STRING"
+    ],
+    [
+      8,
+      2,
+      4,
+      3,
+      4,
+      "STRING"
+    ],
+    [
+      9,
+      2,
+      5,
+      3,
+      5,
+      "BOOLEAN"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

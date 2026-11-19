@@ -1,0 +1,27 @@
+[project]
+name = "topx-ood-code-comfyui"
+version = "0.2.0"
+description = "TopX motion generation, cached LLM2Vec conditioning, and skinned GLB animation tools for ComfyUI"
+readme = "README_COMFYUI.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "TopX ComfyUI integration contributors" }]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "pillow>=10.0",
+  "pygltflib>=1.16.0",
+]
+keywords = ["ComfyUI", "TopX", "motion", "glTF", "BVH", "3D animation"]
+
+[project.urls]
+Repository = "https://github.com/indyh91/TopX-OOD-Code-comfyui"
+Documentation = "https://github.com/indyh91/TopX-OOD-Code-comfyui/blob/main/README_COMFYUI.md"
+
+[tool.comfy]
+PublisherId = "indyh91"
+DisplayName = "TopX OOD Motion + GLB Bridge"
+Icon = ""
+includes = ["__init__.py", "comfy_nodes.py", "topx_runtime.py", "glb_bridge.py",
+            "src/**", "scripts/**", "configs/**", "demo/**", "requirements*.txt",
+            "README.md", "README_COMFYUI.md", "LICENSE"]
