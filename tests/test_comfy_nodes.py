@@ -1,161 +1,387 @@
-"""Dependency-free ComfyUI packaging and input-contract tests.
-
-These tests cannot establish GPU inference correctness or generated-motion quality.
-"""
+"""CPU-only packaging, cache, GLB skinning and API-contract regressions."""
 from __future__ import annotations
 
-import importlib.util
-import os
+import json
+import struct
 import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-
 fake_paths = types.ModuleType("folder_paths")
 fake_paths.models_dir = str(ROOT / "nonexistent_models_for_tests")
 fake_paths.get_output_directory = lambda: str(ROOT / "out")
 sys.modules.setdefault("folder_paths", fake_paths)
 
+import importlib.util
+
 spec = importlib.util.spec_from_file_location(
     "topx_comfy_test_package", ROOT / "__init__.py",
-    submodule_search_locations=[str(ROOT)],
-)
+    submodule_search_locations=[str(ROOT)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
-from topx_comfy_test_package import comfy_nodes as node  # noqa: E402
+from topx_comfy_test_package import comfy_nodes, topx_runtime, glb_bridge  # noqa: E402
+
+
+def create_skinned_glb(path: Path):
+    """Synthetic GLB includes skin hierarchy, nonidentity rest rotation,
+    normals, tangents, skin indices/weights and a normal-map material.
+    """
+    from pygltflib import (
+        GLTF2, Asset, Accessor, Attributes, Buffer, BufferView, Image,
+        Material, Mesh, Node, NormalMaterialTexture, Primitive, Scene,
+        Skin, Texture,
+    )
+    gltf = GLTF2()
+    gltf.asset = Asset(version="2.0")
+    gltf.scene = 0
+    gltf.scenes = [Scene(nodes=[0, 2])]
+    # Root's 90-degree Z rotation verifies world-space rest bone offset and
+    # nonidentity bind-pose rotations when baking motion to joint-local tracks.
+    rz90 = [0.0, 0.0, 0.7071067811865475, 0.7071067811865476]
+    gltf.nodes = [
+        Node(name="Hips", children=[1], rotation=rz90, translation=[0, 0, 0]),
+        Node(name="Neck", translation=[0, 1, 0], rotation=[0.382683432365, 0, 0, 0.923879532511]),
+        Node(name="BodyMesh", mesh=0, skin=0),
+    ]
+    gltf.skins = [Skin(joints=[0, 1], skeleton=0)]
+    payload = bytearray()
+    gltf.bufferViews = []
+    gltf.accessors = []
+
+    def add(array, component, typ):
+        data = np.ascontiguousarray(array)
+        while len(payload) % 4:
+            payload.append(0)
+        start = len(payload)
+        payload.extend(data.tobytes())
+        view = len(gltf.bufferViews)
+        gltf.bufferViews.append(BufferView(buffer=0, byteOffset=start, byteLength=data.nbytes))
+        acc = len(gltf.accessors)
+        gltf.accessors.append(Accessor(
+            bufferView=view, byteOffset=0, componentType=component,
+            count=len(data), type=typ,
+        ))
+        return acc
+
+    pos = add(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], np.float32), 5126, "VEC3")
+    normal = add(np.tile(np.array([0, 0, 1], np.float32), (3, 1)), 5126, "VEC3")
+    tangent = add(np.tile(np.array([1, 0, 0, 1], np.float32), (3, 1)), 5126, "VEC4")
+    joints = add(np.array([[0, 1, 0, 0]] * 3, np.uint16), 5123, "VEC4")
+    weights = add(np.array([[.75, .25, 0, 0]] * 3, np.float32), 5126, "VEC4")
+    ids = add(np.array([0, 1, 2], np.uint16), 5123, "SCALAR")
+    gltf.meshes = [Mesh(primitives=[Primitive(
+        attributes=Attributes(POSITION=pos, NORMAL=normal, TANGENT=tangent,
+                              JOINTS_0=joints, WEIGHTS_0=weights),
+        indices=ids, material=0,
+    )])]
+    gltf.materials = [Material(normalTexture=NormalMaterialTexture(index=0))]
+    gltf.textures = [Texture(source=0)]
+    gltf.images = [Image(uri="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwsB9WVa5i8AAAAASUVORK5CYII=")]
+    gltf.buffers = [Buffer(byteLength=len(payload))]
+    gltf.set_binary_blob(bytes(payload))
+    gltf.save_binary(str(path))
+    return path
+
+
+def read_accessor(gltf, aid):
+    accessor = gltf.accessors[aid]
+    view = gltf.bufferViews[accessor.bufferView]
+    num = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}[accessor.type]
+    offset = view.byteOffset + (accessor.byteOffset or 0)
+    payload = gltf.binary_blob()
+    length = accessor.count * num
+    return np.frombuffer(payload, dtype="<f4", count=length, offset=offset).reshape(accessor.count, num)
 
 
 class RegistrationTests(unittest.TestCase):
-    def test_registration(self):
-        self.assertEqual(
-            set(package.NODE_CLASS_MAPPINGS),
-            {"TopXDemoInputs", "TopXGenerateMotion", "TopXGenerateDemo"},
-        )
+    def test_node_registration_and_types(self):
+        self.assertEqual(set(package.NODE_CLASS_MAPPINGS), {
+            "TopXDemoInputs", "TopXEncodeEmbeddings", "TopXGenerateMotion",
+            "TopXGenerateDemo", "TopXExtractSkeletonGLB", "TopXBakeMotionGLB",
+        })
         for cls in package.NODE_CLASS_MAPPINGS.values():
             self.assertTrue(cls.INPUT_TYPES()["required"])
             self.assertEqual(len(cls.RETURN_TYPES), len(cls.RETURN_NAMES))
+        self.assertEqual(comfy_nodes.TopXGenerateMotion.RETURN_NAMES[5:], (
+            "result_json", "batch_result_json",
+        ))
+        self.assertEqual(comfy_nodes.TopXGenerateMotion.RETURN_TYPES[0], "IMAGE")
 
-    def test_demo_metadata_is_complete(self):
-        samples = node.demo_catalog()
+    def test_twelve_demo_pairs(self):
+        samples = comfy_nodes.demo_catalog()
         self.assertEqual(len(samples), 12)
-        for key, sample in samples.items():
-            self.assertTrue(sample["skeleton"].is_file(), key)
-            self.assertTrue(sample["text_embedding"].is_file(), key)
-            self.assertTrue(sample["joint_embedding"].is_file(), key)
-            self.assertTrue(sample["caption"].startswith("An object "), key)
-            self.assertGreater(sample["frames"], 0)
-            self.assertLessEqual(sample["frames"], 240)
+        for name, d in samples.items():
+            self.assertTrue(d["skeleton"].is_file(), name)
+            self.assertTrue(d["text_embedding"].is_file(), name)
+            self.assertTrue(d["joint_embedding"].is_file(), name)
 
-    def test_demo_outputs(self):
-        values = node.TopXDemoInputs().select("spider / 1")
-        self.assertEqual(len(values), 7)
-        self.assertTrue(values[0].endswith("skeleton.npz"))
-        self.assertEqual(values[4], 31)
-        self.assertEqual(values[5], 17)
-        self.assertTrue(values[6])
-
-    def test_preview_is_an_image(self):
-        self.assertEqual(node.TopXGenerateMotion.RETURN_TYPES[0], "IMAGE")
-        self.assertEqual(node.TopXGenerateMotion.RETURN_TYPES[1], "STRING")
-
-    def test_requirements_do_not_replace_comfy_torch(self):
-        base = (ROOT / "requirements.txt").read_text().lower()
-        self.assertNotIn("torch>=", base)
-        self.assertNotIn("llm2vec", [s.strip() for s in base.splitlines() if not s.startswith("#")])
-        self.assertIn("llm2vec", (ROOT / "requirements-text.txt").read_text())
+    def test_no_host_torch_reinstall(self):
+        base = (ROOT / "requirements.txt").read_text()
+        optional = (ROOT / "requirements-text.txt").read_text()
+        for forbidden in ("torch", "torchvision", "torchaudio", "peft", "transformers"):
+            self.assertFalse(any(line.strip().startswith(forbidden)
+                                 for line in base.splitlines()+optional.splitlines()
+                                 if not line.strip().startswith("#")))
+        self.assertIn("pygltflib", base)
+        self.assertIn("llm2vec", optional)
 
 
-class ValidationTests(unittest.TestCase):
+class CacheTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        self.sk = root / "rig.bvh"
-        self.te = root / "prompt.npy"
-        self.je = root / "joints.npy"
-        for path in (self.sk, self.te, self.je):
-            path.write_bytes(b"test")
+        self.temp = tempfile.TemporaryDirectory()
+        self.directory = Path(self.temp.name)
 
     def tearDown(self):
-        self.tmp.cleanup()
+        self.temp.cleanup()
 
-    def test_precomputed_paths(self):
-        sk, te, je = node.validate_inputs(
-            str(self.sk), "precomputed", "", str(self.te), str(self.je)
+    def _fake_encode(self, mode, req, workdir, timeout):
+        self.assertEqual(mode, "encode")
+        for text in req["text"]:
+            topx_runtime._atomic_save_npy(Path(text["path"]), np.zeros(4096, np.float32))
+        if req["joint_output"]:
+            topx_runtime._atomic_save_npy(
+                Path(req["joint_output"]), np.zeros((24, 4096), np.float32))
+        return {"text_encoded": len(req["text"])}
+
+    def test_text_and_joint_cache_hit_miss_and_encoder_unload(self):
+        skeleton = ROOT / "demo" / "spider" / "skeleton.npz"
+        hook = mock.Mock()
+        with mock.patch.object(topx_runtime, "_run_worker", side_effect=self._fake_encode) as worker:
+            first = topx_runtime.encode_embeddings(
+                ["scuttles", "jumps"], None, self.directory, skeleton_path=skeleton,
+                keep_rest_rotations=True, before_worker=hook)
+            self.assertFalse(first["cache_hit"])
+            self.assertEqual(len(first["text_embedding_paths"]), 2)
+            self.assertEqual(worker.call_count, 1)
+            self.assertEqual(hook.call_count, 1)
+            second = topx_runtime.encode_embeddings(
+                ["scuttles", "jumps"], None, self.directory, skeleton_path=skeleton,
+                keep_rest_rotations=True, before_worker=hook)
+            self.assertTrue(second["cache_hit"])
+            self.assertEqual(worker.call_count, 1)
+            self.assertEqual(hook.call_count, 1)
+            self.assertEqual(first["text_embedding_paths"], second["text_embedding_paths"])
+            third = topx_runtime.encode_embeddings(
+                ["scuttles", "walks"], None, self.directory, skeleton_path=skeleton,
+                keep_rest_rotations=True, before_worker=hook)
+            self.assertFalse(third["cache_hit"])
+            self.assertEqual(worker.call_count, 2)
+            self.assertEqual(len(worker.call_args[0][1]["text"]), 1)
+            self.assertFalse(bool(worker.call_args[0][1]["joint_output"]))
+
+    def test_cache_key_changes_with_rig_geometry_and_axes(self):
+        one = self.directory/"a.npz"
+        two = self.directory/"b.npz"
+        one.write_bytes(b"rig_1")
+        two.write_bytes(b"rig_2")
+        self.assertNotEqual(topx_runtime._sha256_file(one), topx_runtime._sha256_file(two))
+        self.assertNotEqual(topx_runtime._sha1({"rig": 1, "up": "+Y"}),
+                            topx_runtime._sha1({"rig": 1, "up": "+Z"}))
+
+    def test_caption_prefix_preserves_raw(self):
+        self.assertEqual(
+            topx_runtime._preflight_prompt("Walks forward.", True),
+            "An object walks forward.",
         )
-        self.assertEqual((sk, te, je), (self.sk.resolve(), self.te.resolve(), self.je.resolve()))
+        self.assertEqual(
+            topx_runtime._preflight_prompt("Walks forward.", False),
+            "Walks forward.",
+        )
 
-    def test_refuse_mismatched_new_prompt(self):
-        with self.assertRaisesRegex(ValueError, "ignored"):
-            node.validate_inputs(
-                str(self.sk), "precomputed", "An object walks.", str(self.te), str(self.je)
+    def test_atomic_cache_rejects_corruption(self):
+        target = self.directory/"vec.npy"
+        target.write_bytes(b"invalid")
+        self.assertFalse(topx_runtime._valid_npy(target, (4096,)))
+        topx_runtime._atomic_save_npy(target, np.ones(4096, np.float32))
+        self.assertTrue(topx_runtime._valid_npy(target, (4096,)))
+
+
+class GLBTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.temp.name)
+        self.source = create_skinned_glb(self.dir/"character.glb")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_extract_bvh_hierarchy_and_rest_pose(self):
+        info = glb_bridge.extract_skeleton(self.source, self.dir/"rig.bvh")
+        self.assertEqual(info["joint_count"], 2)
+        self.assertEqual(info["joint_names"], ["Hips", "Neck"])
+        self.assertEqual(info["rest_frame"], -1)
+        parsed = glb_bridge._parse_bvh_motion(Path(info["bvh_path"]))
+        self.assertEqual(parsed["parents"], [-1, 0])
+        self.assertEqual(parsed["frames"], 2)
+        # Neck is rotated to world -X by original glTF root's bind rotation.
+        np.testing.assert_allclose(parsed["offsets"][1], [-1, 0, 0], atol=1e-6)
+
+    def test_hemisphere_continuity(self):
+        q = np.array([[0., 0., 0., 1.], [0., 0., 0., -1.],
+                      [0., 0., .3, -.9539392]])
+        result = glb_bridge.hemisphere_continuous(q)
+        self.assertTrue((np.sum(result[1:]*result[:-1], axis=-1) >= 0).all())
+        np.testing.assert_allclose(np.linalg.norm(result, axis=-1), 1, atol=1e-6)
+
+    def test_roundtrip_preserves_geometry_normals_tangents_and_material(self):
+        from pygltflib import GLTF2
+        bvh = self.dir/"skeleton.bvh"
+        glb_bridge.extract_skeleton(self.source, bvh)
+        text = bvh.read_text()
+        # Modify second rest frame: root Z 45 degrees, Neck X 20 degrees,
+        # giving nontrivial local quaternion keyframes with a fixed bind pose.
+        lines = text.splitlines()
+        last = lines[-1].split()
+        self.assertEqual(len(last), 9)
+        last[0] = "0.2"
+        last[3] = "45.0"
+        last[7] = "20.0"
+        lines[-1] = " ".join(last)
+        bvh.write_text("\n".join(lines)+"\n")
+        before = GLTF2().load_binary(str(self.source))
+        original_bin = before.binary_blob()
+        original_views = [v.to_dict() for v in before.bufferViews]
+        original_materials = [m.to_dict() for m in before.materials]
+        original_primitive = json.loads(before.to_json())["meshes"][0]["primitives"][0]
+        animated = self.dir/"animated.glb"
+        result = glb_bridge.bake_motion(self.source, bvh, "walk", animated)
+        self.assertEqual(result["joint_count"], 2)
+        self.assertEqual(result["frame_count"], 2)
+        out = GLTF2().load_binary(str(animated))
+        self.assertEqual(out.binary_blob()[:len(original_bin)], original_bin)
+        self.assertEqual([v.to_dict() for v in out.bufferViews[:len(original_views)]],
+                         original_views)
+        self.assertEqual([m.to_dict() for m in out.materials], original_materials)
+        self.assertEqual(json.loads(out.to_json())["meshes"][0]["primitives"][0], original_primitive)
+        for attr in ("NORMAL", "TANGENT", "JOINTS_0", "WEIGHTS_0"):
+            self.assertEqual(getattr(out.meshes[0].primitives[0].attributes, attr),
+                             getattr(before.meshes[0].primitives[0].attributes, attr))
+        self.assertEqual(out.materials[0].normalTexture.index, 0)
+        animation = out.animations[-1]
+        self.assertEqual(animation.name, "walk")
+        # Rest keyframe MUST reproduce each source glTF local bind rotation.
+        for channel in animation.channels:
+            if channel.target.path == "rotation":
+                values = read_accessor(out, animation.samplers[channel.sampler].output)
+                node = before.nodes[channel.target.node]
+                reference = glb_bridge._unit_quaternion(
+                    node.rotation if node.rotation else [0, 0, 0, 1])
+                self.assertAlmostEqual(abs(float(values[0] @ reference)), 1., places=5)
+            if channel.target.path == "translation":
+                values = read_accessor(out, animation.samplers[channel.sampler].output)
+                np.testing.assert_allclose(values[1], [.2, 0, 0], atol=1e-6)
+        self.assertEqual(len(animation.channels), 3)  # 2 rotations and 1 root translation
+        for ch in animation.channels:
+            if ch.target.path == "rotation":
+                track = read_accessor(out, animation.samplers[ch.sampler].output)
+                np.testing.assert_allclose(np.linalg.norm(track, axis=-1), 1, atol=1e-5)
+                self.assertTrue((np.sum(track[:-1]*track[1:], axis=-1) >= 0).all())
+
+    def test_refuse_existing_animated_glb_output(self):
+        bvh = self.dir/"rest.bvh"
+        glb_bridge.extract_skeleton(self.source, bvh)
+        existing = self.dir/"existing.glb"
+        existing.write_bytes(b"do not overwrite")
+        with self.assertRaises(FileExistsError):
+            glb_bridge.bake_motion(self.source, bvh, "rest", existing)
+        self.assertEqual(existing.read_bytes(), b"do not overwrite")
+
+    def test_refuse_nonrigid_bind_transforms(self):
+        from pygltflib import GLTF2
+        gltf = GLTF2().load_binary(str(self.source))
+        gltf.nodes[1].scale = [2., 1., 1.]
+        path = self.dir/"scaled.glb"
+        gltf.save_binary(str(path))
+        with self.assertRaisesRegex(ValueError, "scale"):
+            glb_bridge.extract_skeleton(path, self.dir/"bad.bvh")
+
+
+class APITests(unittest.TestCase):
+    def test_json_schema(self):
+        fields = {
+            "bvh_path": "a.bvh", "npz_path": "a.npz", "gif_path": None,
+            "fk_diag_score": .12, "joint_count": 24, "frame_count": 31,
+            "fps": 30., "seed": 17, "elapsed_sec": 1.5, "cache_hit": True,
+        }
+        with mock.patch.object(comfy_nodes, "_preview", return_value="preview"):
+            out = comfy_nodes._outputs({"results": [fields], "checkpoint_loads": 1})
+        result = json.loads(out["result"][5])
+        self.assertTrue(set(fields).issubset(result))
+        self.assertEqual(out["result"][3], "")
+        self.assertEqual(json.loads(out["result"][6])["checkpoint_loads"], 1)
+
+    def test_render_gif_false_passes_to_worker(self):
+        sample = "spider / 1"
+        info = comfy_nodes.demo_catalog()[sample]
+        record = {"results": [dict(bvh_path="x.bvh", npz_path="x.npz",
+                                   gif_path=None, fk_diag_score=.1)],
+                  "checkpoint_loads": 1}
+        with (mock.patch.object(comfy_nodes, "_unload"),
+              mock.patch.object(comfy_nodes, "checkpoint_path", return_value=Path("x.pt")),
+              mock.patch.object(topx_runtime, "sample_motion_batch", return_value=record) as worker,
+              mock.patch.object(comfy_nodes, "_outputs", return_value="ok")):
+            node = comfy_nodes.TopXGenerateDemo()
+            got = node.generate_demo(sample, -1, 0, 50, 2., False, "", 1800,
+                                     render_gif=False)
+        self.assertEqual(got, "ok")
+        self.assertFalse(worker.call_args.kwargs["render_gif"])
+
+
+class WorkflowTests(unittest.TestCase):
+    def test_all_three_graphs_have_consistent_links_and_node_names(self):
+        filenames = ("topx_demo_spider.json", "topx_custom_bvh_llm2vec.json",
+                     "topx_glb_end_to_end.json")
+        for filename in filenames:
+            graph = json.loads((ROOT/"workflows"/filename).read_text())
+            nodes = {n["id"]: n for n in graph["nodes"]}
+            self.assertEqual(len(nodes), len(graph["nodes"]))
+            self.assertTrue(set(n["type"] for n in nodes.values()).issubset(
+                package.NODE_CLASS_MAPPINGS))
+            for n in nodes.values():
+                cls = package.NODE_CLASS_MAPPINGS[n["type"]]
+                self.assertEqual(len(n["outputs"]), len(cls.RETURN_TYPES))
+                for value in n["inputs"]:
+                    self.assertIn(value["name"], cls.INPUT_TYPES().get("required", {})
+                                  | cls.INPUT_TYPES().get("optional", {}))
+            self.assertEqual(len(graph["links"]), graph["last_link_id"])
+            for link_id, src, src_out, dst, dst_in, typ in graph["links"]:
+                self.assertEqual(nodes[src]["outputs"][src_out]["type"], typ)
+                self.assertIn(link_id, nodes[src]["outputs"][src_out]["links"])
+                self.assertEqual(nodes[dst]["inputs"][dst_in]["link"], link_id)
+                self.assertEqual(nodes[dst]["inputs"][dst_in]["type"], typ)
+
+    def test_encoded_metadata_propagation_requires_matching_embedding(self):
+        sample = comfy_nodes.demo_catalog()["spider / 1"]
+        meta = {"text_embedding_paths": [str(sample["text_embedding"])],
+                "joint_embedding_path": str(sample["joint_embedding"]),
+                "effective_prompts": ["An object scuttles."],
+                "raw_prompts": ["scuttles."], "cache_hit": False}
+        with (mock.patch.object(comfy_nodes, "_unload"),
+              mock.patch.object(comfy_nodes, "checkpoint_path", return_value=Path("x.pt")),
+              mock.patch.object(topx_runtime, "sample_motion_batch", return_value={"results": [{}]}) as worker,
+              mock.patch.object(comfy_nodes, "_outputs", return_value="done")):
+            result = comfy_nodes.TopXGenerateMotion().generate_motion(
+                skeleton_path=str(sample["skeleton"]), text_source="precomputed",
+                prompt="", text_embedding_path=str(sample["text_embedding"]),
+                joint_embedding_path=str(sample["joint_embedding"]),
+                frames=31, seed=17, steps=50, cfg_text=2., up="+Y", forward="+Z",
+                rest_frame=0, keep_rest_rotations=True, allow_axis_mismatch=False,
+                release_comfy_vram=False, device="cuda", tf32=True,
+                checkpoint_path="", output_name="x", timeout_seconds=60,
+                embedding_metadata_json=json.dumps(meta),
             )
-
-    def test_refuse_missing_precomputed_embeddings(self):
-        with self.assertRaisesRegex(ValueError, "requires both"):
-            node.validate_inputs(str(self.sk), "precomputed", "", "", "")
-
-    def test_new_prompt_mode(self):
-        sk, te, je = node.validate_inputs(
-            str(self.sk), "llm2vec", "An object jumps.", "", ""
-        )
-        self.assertEqual(sk, self.sk.resolve())
-        self.assertIsNone(te)
-        self.assertIsNone(je)
-
-    def test_reject_glb(self):
-        glb = self.sk.with_suffix(".glb")
-        glb.write_bytes(b"test")
-        with self.assertRaisesRegex(ValueError, "GLB"):
-            node.validate_inputs(str(glb), "llm2vec", "jump", "", "")
-
-    def test_safe_stem_never_escapes_output(self):
-        self.assertEqual(node.safe_stem("../_evil\\stuff"), "evil_stuff")
-        self.assertEqual(node.safe_stem(""), "topx")
-
-    def test_windows_command_uses_argv_not_shell(self):
-        args = node.build_command(
-            checkpoint=Path("C:/models/topx/topx.pt"),
-            skeleton=Path("C:/My Rig/rig.bvh"),
-            output_dir=Path("C:/My Output/topx"),
-            name="motion_1",
-            text_source="precomputed",
-            prompt="",
-            text_emb=Path("C:/My Rig/text.npy"),
-            joint_emb=Path("C:/My Rig/joint.npy"),
-            frames=120,
-            seed=17,
-            steps=50,
-            cfg_text=2.0,
-            up="+Y",
-            forward="-Z",
-            rest_frame=-1,
-            keep_rest_rotations=False,
-            allow_axis_mismatch=False,
-            tf32=True,
-            device="cuda",
-        )
-        self.assertEqual(args[0], sys.executable)
-        self.assertIn("--forward=-Z", args)
-        self.assertIn(str(Path("C:/My Rig/rig.bvh")), args)
-        self.assertNotIn("--text", args)
-        self.assertIn("--text_emb", args)
-
-    def test_axes_are_perpendicular(self):
-        with self.assertRaisesRegex(ValueError, "orthogonal"):
-            node.build_command(
-                Path("x.pt"), self.sk, Path("out"), "name", "precomputed",
-                "", self.te, self.je, 60, 7, 50, 2.0,
-                "+Z", "-Z", 0, False, False, True, "cuda"
-            )
-
-    def test_subprocess_log_has_no_pipes(self):
-        log = Path(self.tmp.name) / "subprocess.log"
-        node._execute([sys.executable, "-c", "print('TopX-test-process')"], log, 10)
-        self.assertIn("TopX-test-process", log.read_text())
+        self.assertEqual(result, "done")
+        clip = worker.call_args.args[1][0]
+        self.assertFalse(clip["cache_hit"])
+        self.assertEqual(clip["raw_prompt"], "scuttles.")
+        self.assertEqual(clip["prompt"], "An object scuttles.")
 
 
 if __name__ == "__main__":
