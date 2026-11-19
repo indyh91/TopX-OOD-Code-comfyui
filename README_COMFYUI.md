@@ -15,8 +15,8 @@ git pull origin main
 & "<ComfyUI Python.exe>" -m pip install -r ".\requirements.txt"
 ~~~
 
-During development, switch to the production-cache-batch-glb-bridge branch,
-which contains this pull request. Restart ComfyUI after updating.
+Before the pull request is merged, switch to its source branch instead
+of main. After merging, use main. Restart ComfyUI after updating.
 
 Download the official checkpoint from
 https://huggingface.co/Tevior/TopX-OOD/blob/main/topx.pt
