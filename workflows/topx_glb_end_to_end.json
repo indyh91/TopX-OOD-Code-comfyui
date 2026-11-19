@@ -1,6 +1,6 @@
 {
   "last_node_id": 4,
-  "last_link_id": 7,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
@@ -108,12 +108,16 @@
         {
           "name": "metadata_json",
           "type": "STRING",
-          "links": null
+          "links": [
+            8
+          ]
         },
         {
           "name": "cache_hit",
           "type": "BOOLEAN",
-          "links": null
+          "links": [
+            9
+          ]
         }
       ],
       "properties": {
@@ -167,6 +171,16 @@
           "name": "joint_embedding_path",
           "type": "STRING",
           "link": 6
+        },
+        {
+          "name": "embedding_metadata_json",
+          "type": "STRING",
+          "link": 8
+        },
+        {
+          "name": "encoding_cache_hit",
+          "type": "BOOLEAN",
+          "link": 9
         }
       ],
       "outputs": [
@@ -340,6 +354,22 @@
       4,
       0,
       "STRING"
+    ],
+    [
+      8,
+      2,
+      4,
+      3,
+      4,
+      "STRING"
+    ],
+    [
+      9,
+      2,
+      5,
+      3,
+      5,
+      "BOOLEAN"
     ]
   ],
   "groups": [],
