@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -244,7 +245,7 @@ def extract_skeleton(glb_path: str | Path, output_bvh: str | Path,
     if output.resolve() == Path(glb_path).resolve():
         raise ValueError("Output path must differ from input.")
     output.parent.mkdir(parents=True, exist_ok=True)
-    tmp = output.with_suffix(output.suffix + ".tmp")
+    tmp = output.with_name(output.name + "." + uuid.uuid4().hex + ".tmp")
     tmp.write_text(_render_skeleton_bvh(rig), encoding="utf-8")
     tmp.replace(output)
     return {
@@ -508,11 +509,17 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
         changed.append("original BIN payload")
     if changed:
         raise RuntimeError("Original-data preservation invariant failed: " + ", ".join(changed))
-    dest = Path(output_glb_path) if output_glb_path else src.with_name(src.stem + "_topx.glb")
+    if output_glb_path:
+        dest = Path(output_glb_path).expanduser()
+    else:
+        safe_clip = re.sub(r"[^A-Za-z0-9_-]", "_", clip_name or "TopX")[:48]
+        dest = src.with_name(src.stem + "_" + safe_clip + "_" + uuid.uuid4().hex[:8] + ".glb")
     if dest.resolve() == src.resolve():
         raise ValueError("Refusing to overwrite the original GLB.")
+    if dest.exists():
+        raise FileExistsError(f"Refusing to overwrite an existing animated GLB: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".tmp.glb")
+    tmp = dest.with_name(dest.stem + "." + uuid.uuid4().hex + ".tmp.glb")
     gltf.save_binary(str(tmp))
     check = GLTF2().load_binary(str(tmp))
     if ((check.binary_blob() or b"")[:len(original)] != original or
