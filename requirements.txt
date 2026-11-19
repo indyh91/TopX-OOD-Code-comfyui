@@ -1,7 +1,5 @@
-torch>=2.4
+# ComfyUI already provides torch; do not replace its CUDA/PyTorch build.
+# LLM2Vec is intentionally optional. See requirements-text.txt.
 numpy>=1.24
 scipy>=1.10
 pillow>=10.0
-# only needed to encode new prompts or joint descriptions (--text / no --joint_sem)
-transformers==4.44.2
-llm2vec
