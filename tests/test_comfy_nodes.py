@@ -313,5 +313,55 @@ class APITests(unittest.TestCase):
         self.assertFalse(worker.call_args.kwargs["render_gif"])
 
 
+class WorkflowTests(unittest.TestCase):
+    def test_all_three_graphs_have_consistent_links_and_node_names(self):
+        filenames = ("topx_demo_spider.json", "topx_custom_bvh_llm2vec.json",
+                     "topx_glb_end_to_end.json")
+        for filename in filenames:
+            graph = json.loads((ROOT/"workflows"/filename).read_text())
+            nodes = {n["id"]: n for n in graph["nodes"]}
+            self.assertEqual(len(nodes), len(graph["nodes"]))
+            self.assertTrue(set(n["type"] for n in nodes.values()).issubset(
+                package.NODE_CLASS_MAPPINGS))
+            for n in nodes.values():
+                cls = package.NODE_CLASS_MAPPINGS[n["type"]]
+                self.assertEqual(len(n["outputs"]), len(cls.RETURN_TYPES))
+                for value in n["inputs"]:
+                    self.assertIn(value["name"], cls.INPUT_TYPES().get("required", {})
+                                  | cls.INPUT_TYPES().get("optional", {}))
+            self.assertEqual(len(graph["links"]), graph["last_link_id"])
+            for link_id, src, src_out, dst, dst_in, typ in graph["links"]:
+                self.assertEqual(nodes[src]["outputs"][src_out]["type"], typ)
+                self.assertIn(link_id, nodes[src]["outputs"][src_out]["links"])
+                self.assertEqual(nodes[dst]["inputs"][dst_in]["link"], link_id)
+                self.assertEqual(nodes[dst]["inputs"][dst_in]["type"], typ)
+
+    def test_encoded_metadata_propagation_requires_matching_embedding(self):
+        sample = comfy_nodes.demo_catalog()["spider / 1"]
+        meta = {"text_embedding_paths": [str(sample["text_embedding"])],
+                "joint_embedding_path": str(sample["joint_embedding"]),
+                "effective_prompts": ["An object scuttles."],
+                "raw_prompts": ["scuttles."], "cache_hit": False}
+        with (mock.patch.object(comfy_nodes, "_unload"),
+              mock.patch.object(comfy_nodes, "checkpoint_path", return_value=Path("x.pt")),
+              mock.patch.object(topx_runtime, "sample_motion_batch", return_value={"results": [{}]}) as worker,
+              mock.patch.object(comfy_nodes, "_outputs", return_value="done")):
+            result = comfy_nodes.TopXGenerateMotion().generate_motion(
+                skeleton_path=str(sample["skeleton"]), text_source="precomputed",
+                prompt="", text_embedding_path=str(sample["text_embedding"]),
+                joint_embedding_path=str(sample["joint_embedding"]),
+                frames=31, seed=17, steps=50, cfg_text=2., up="+Y", forward="+Z",
+                rest_frame=0, keep_rest_rotations=True, allow_axis_mismatch=False,
+                release_comfy_vram=False, device="cuda", tf32=True,
+                checkpoint_path="", output_name="x", timeout_seconds=60,
+                embedding_metadata_json=json.dumps(meta),
+            )
+        self.assertEqual(result, "done")
+        clip = worker.call_args.args[1][0]
+        self.assertFalse(clip["cache_hit"])
+        self.assertEqual(clip["raw_prompt"], "scuttles.")
+        self.assertEqual(clip["prompt"], "An object scuttles.")
+
+
 if __name__ == "__main__":
     unittest.main()
