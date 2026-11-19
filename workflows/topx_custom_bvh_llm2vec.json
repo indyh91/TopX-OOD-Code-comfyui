@@ -1,0 +1,212 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 3,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "TopXEncodeEmbeddings",
+      "pos": [
+        90,
+        120
+      ],
+      "size": [
+        350,
+        367
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text_embedding_path",
+          "type": "STRING",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "joint_embedding_path",
+          "type": "STRING",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "skeleton_path",
+          "type": "STRING",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "text_embedding_paths_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "metadata_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "cache_hit",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXEncodeEmbeddings"
+      },
+      "widgets_values": [
+        "An object walks forward.",
+        "C:\\path\\to\\character.bvh",
+        "",
+        "+Y",
+        "+Z",
+        0,
+        false,
+        true,
+        "cuda",
+        true,
+        3600
+      ]
+    },
+    {
+      "id": 2,
+      "type": "TopXGenerateMotion",
+      "pos": [
+        550,
+        120
+      ],
+      "size": [
+        350,
+        718
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text_embedding_path",
+          "type": "STRING",
+          "link": 1
+        },
+        {
+          "name": "joint_embedding_path",
+          "type": "STRING",
+          "link": 2
+        },
+        {
+          "name": "skeleton_path",
+          "type": "STRING",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "preview_image",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "bvh_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "npz_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "gif_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "diagnostic",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "result_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "batch_result_json",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TopXGenerateMotion"
+      },
+      "widgets_values": [
+        "C:\\path\\to\\character.bvh",
+        "precomputed",
+        "",
+        "",
+        "",
+        120,
+        7,
+        50,
+        2,
+        "+Y",
+        "+Z",
+        0,
+        false,
+        false,
+        true,
+        "cuda",
+        true,
+        "",
+        "motion",
+        3600,
+        true,
+        true,
+        "",
+        ""
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      1,
+      "STRING"
+    ],
+    [
+      3,
+      1,
+      2,
+      2,
+      2,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}
