@@ -150,7 +150,7 @@ the Extract and Bake nodes.
 
 The baker composes TopX's world-space rest-relative rotations with the
 original glTF bind rotations, derives local joint rotations, normalizes
-XYWZ-order **[x,y,z,w]** quaternions and ensures adjacent hemisphere
+XYZW-order **[x,y,z,w]** quaternions and ensures adjacent hemisphere
 continuity. Root displacement is converted to the source glTF parent frame.
 The output is a NEW GLB; the source is never overwritten.
 
