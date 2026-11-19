@@ -1,5 +1,4 @@
-# Install only for NEW text prompts or missing joint-description embeddings.
-# Uses gated Meta-Llama-3-8B weights; not needed by bundled demos.
--r requirements.txt
-transformers==4.44.2
+# Optional gated LLM2Vec encoder. Install with --no-deps to preserve
+# ComfyUI's torch/transformers/peft dependency set; verify compatible
+# dependencies separately. See README_COMFYUI.md.
 llm2vec
