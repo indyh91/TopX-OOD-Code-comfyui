@@ -1,0 +1,5 @@
+# Install only for NEW text prompts or missing joint-description embeddings.
+# Uses gated Meta-Llama-3-8B weights; not needed by bundled demos.
+-r requirements.txt
+transformers==4.44.2
+llm2vec
