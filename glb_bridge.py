@@ -84,17 +84,27 @@ def hemisphere_continuous(quats):
     return result
 
 
+def _trs_field(value, length, default, name, node_index):
+    # pygltflib represents omitted glTF TRS properties as either None or [].
+    if value is None or len(value) == 0:
+        return np.asarray(default, dtype=np.float64)
+    out = np.asarray(value, dtype=np.float64)
+    if out.shape != (length,) or not np.isfinite(out).all():
+        raise ValueError(f"Node {node_index}: invalid {name} transform.")
+    return out
+
+
 def _local_matrix(node, *, node_index: int):
     if node.matrix is not None and len(node.matrix):
         m = np.array(node.matrix, dtype=np.float64).reshape(4, 4).T
         # Matrix-form joints cannot receive glTF animation channels. Ancestor
         # nodes are allowed if they contain a rigid matrix.
     else:
-        translation = np.asarray(node.translation if node.translation is not None else [0., 0., 0.], dtype=np.float64)
-        scale = np.asarray(node.scale if node.scale is not None else [1., 1., 1.], dtype=np.float64)
+        translation = _trs_field(node.translation, 3, [0., 0., 0.], "translation", node_index)
+        scale = _trs_field(node.scale, 3, [1., 1., 1.], "scale", node_index)
         if not np.allclose(scale, 1., atol=1e-6):
             raise ValueError(f"Node {node_index} has non-unit scale; refuse skin distortion.")
-        rotation = quat_to_mat(node.rotation if node.rotation is not None else [0, 0, 0, 1])
+        rotation = quat_to_mat(_trs_field(node.rotation, 4, [0, 0, 0, 1], "rotation", node_index))
         m = np.eye(4)
         m[:3, :3] = rotation
         m[:3, 3] = translation
@@ -446,10 +456,8 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     else:
         local_root = _local_matrix(gltf.nodes[rootid], node_index=rootid)
         parent_r = rig.rest_rotations[0] @ local_root[:3, :3].T
-    original_translation = np.asarray(
-        gltf.nodes[rootid].translation if gltf.nodes[rootid].translation is not None else [0., 0., 0.],
-        dtype=np.float64,
-    )
+    original_translation = _trs_field(gltf.nodes[rootid].translation, 3, [0., 0., 0.],
+                                      "translation", rootid)
     root_local = original_translation + (root_world - rig.positions[0]) @ parent_r
     if not np.isfinite(rotations).all() or not np.isfinite(root_local).all():
         raise ValueError("Invalid resulting GLB animation tracks.")
