@@ -1,0 +1,23 @@
+name: ComfyUI integration contracts
+
+on:
+  push:
+    branches: [main, comfyui-native-topx-nodes]
+  pull_request:
+
+jobs:
+  static-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax
+        run: python -m compileall -q __init__.py comfy_nodes.py scripts src tests
+      - name: Run dependency-free node contracts
+        run: python -m unittest discover -s tests -v
