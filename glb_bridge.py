@@ -487,12 +487,19 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     gltf.set_binary_blob(bytes(blob))
     if [v.to_dict() for v in gltf.bufferViews[:len(original_views)]] != original_views:
         raise RuntimeError("Original buffer views changed unexpectedly.")
-    if ([m.to_dict() for m in gltf.materials] != original_materials or
-        [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes] != original_primitives or
-        [s.to_dict() for s in gltf.skins] != original_skin or
-        [a.to_dict() for a in gltf.accessors[:len(original_accessors)]] != original_accessors or
-        gltf.binary_blob()[:len(original)] != original):
-        raise RuntimeError("Skin/mesh/material/original binary preservation invariant failed.")
+    changed = []
+    if [m.to_dict() for m in gltf.materials] != original_materials:
+        changed.append("materials")
+    if [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes] != original_primitives:
+        changed.append("mesh primitives")
+    if [skin.to_dict() for skin in gltf.skins] != original_skin:
+        changed.append("skins")
+    if [a.to_dict() for a in gltf.accessors[:len(original_accessors)]] != original_accessors:
+        changed.append("accessors")
+    if gltf.binary_blob()[:len(original)] != original:
+        changed.append("original BIN payload")
+    if changed:
+        raise RuntimeError("Original-data preservation invariant failed: " + ", ".join(changed))
     dest = Path(output_glb_path) if output_glb_path else src.with_name(src.stem + "_topx.glb")
     if dest.resolve() == src.resolve():
         raise ValueError("Refusing to overwrite the original GLB.")
