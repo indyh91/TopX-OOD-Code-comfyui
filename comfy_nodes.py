@@ -186,7 +186,11 @@ class TopXGenerateMotion:
                 "auto_prefix_caption": ("BOOLEAN", {"default": True}),
                 "cache_dir": ("STRING", {"default": ""}),
             },
-            "optional": {"specs_json": ("STRING", {"default": "", "multiline": True})},
+            "optional": {
+                "specs_json": ("STRING", {"default": "", "multiline": True}),
+                "embedding_metadata_json": ("STRING", {"default": "", "multiline": True}),
+                "encoding_cache_hit": ("BOOLEAN", {"default": True}),
+            },
         }
 
     def generate_motion(self, skeleton_path, text_source, prompt, text_embedding_path,
@@ -194,7 +198,8 @@ class TopXGenerateMotion:
                         rest_frame, keep_rest_rotations, allow_axis_mismatch,
                         release_comfy_vram, device, tf32, checkpoint_path, output_name,
                         timeout_seconds, render_gif=True, auto_prefix_caption=True,
-                        cache_dir="", specs_json=""):
+                        cache_dir="", specs_json="", embedding_metadata_json="",
+                        encoding_cache_hit=True):
         cache = _cache(cache_dir)
         if not skeleton_path.strip():
             raise ValueError("Provide .bvh, TopX skeleton .npz, or rigged .glb.")
@@ -232,8 +237,23 @@ class TopXGenerateMotion:
                 raise ValueError("Precomputed embeddings cannot be combined with a new prompt.")
             if not text_embedding_path.strip():
                 raise ValueError("Provide text_embedding_path or specs_json.")
+            raw_caption = ""
+            effective_caption = ""
+            recorded_hit = bool(encoding_cache_hit)
+            if embedding_metadata_json.strip():
+                meta = json.loads(embedding_metadata_json)
+                paths = meta.get("text_embedding_paths", [])
+                if not paths or Path(paths[0]).resolve() != Path(text_embedding_path).resolve():
+                    raise ValueError("Encoder metadata does not match text_embedding_path.")
+                if joint is not None and meta.get("joint_embedding_path"):
+                    if joint.resolve() != Path(meta["joint_embedding_path"]).resolve():
+                        raise ValueError("Encoder metadata does not match joint_embedding_path.")
+                raw_caption = str(meta.get("raw_prompts", [""])[0])
+                effective_caption = str(meta.get("effective_prompts", [""])[0])
+                recorded_hit = bool(meta.get("cache_hit", recorded_hit))
             specs = [dict(text_embedding_path=text_embedding_path, seed=seed, num_frames=frames,
-                          steps=steps, cfg_text=cfg_text, cache_hit=True)]
+                          steps=steps, cfg_text=cfg_text, prompt=effective_caption,
+                          raw_prompt=raw_caption, cache_hit=recorded_hit)]
         else:
             raise ValueError(f"Unknown text_source: {text_source}")
         safe = re.sub(r"[^A-Za-z0-9_-]", "_", output_name)[:48].strip("_") or "motion"
