@@ -14,15 +14,26 @@ with the order of its joints. A single model animates skeletons from 4 to 117 jo
 This repository contains the model and the generation script for a new skeleton. Training code and the SkelShift
 benchmark (data rebuild scripts and evaluation) will be added.
 
+## ComfyUI custom nodes (Windows-native)
+
+This fork provides **TopX Generate Demo Motion**, **TopX Demo Inputs**, and
+**TopX Generate Motion (BVH)** nodes. It runs the unmodified upstream generator,
+exports BVH/NPZ/GIF files under ComfyUI's output directory, and returns an
+IMAGE preview and paths for downstream workflows.
+
+See [README_COMFYUI.md](README_COMFYUI.md) for the ComfyUI Desktop installation,
+checkpoint location, one-node demo, custom-rig mode and limitations.
+
 ## Installation
 
 ```bash
 git clone https://github.com/CHDTevior/TopX-OOD-Code.git
 cd TopX-OOD-Code
+pip install 'torch>=2.4'
 pip install -r requirements.txt
 ```
 
-Download the weights into `weights/`:
+To use new text prompts or generate embeddings for new joint descriptions, also install `requirements-text.txt` and obtain access to the upstream gated LLM2Vec encoder. The included demos need neither optional dependency. For standalone research use, download the weights into `weights/`:
 
 ```bash
 huggingface-cli download Tevior/TopX-OOD topx.pt --local-dir weights
