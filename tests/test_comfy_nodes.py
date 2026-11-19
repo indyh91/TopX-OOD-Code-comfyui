@@ -47,7 +47,7 @@ def create_skinned_glb(path: Path):
     rz90 = [0.0, 0.0, 0.7071067811865475, 0.7071067811865476]
     gltf.nodes = [
         Node(name="Hips", children=[1], rotation=rz90, translation=[0, 0, 0]),
-        Node(name="Neck", translation=[0, 1, 0], rotation=[0, 0, 0, 1]),
+        Node(name="Neck", translation=[0, 1, 0], rotation=[0.382683432365, 0, 0, 0.923879532511]),
         Node(name="BodyMesh", mesh=0, skin=0),
     ]
     gltf.skins = [Skin(joints=[0, 1], skeleton=0)]
@@ -240,8 +240,9 @@ class GLBTests(unittest.TestCase):
         lines = text.splitlines()
         last = lines[-1].split()
         self.assertEqual(len(last), 9)
-        last[5] = "45.0"
-        last[6] = "20.0"
+        last[0] = "0.2"
+        last[3] = "45.0"
+        last[7] = "20.0"
         lines[-1] = " ".join(last)
         bvh.write_text("\n".join(lines)+"\n")
         before = GLTF2().load_binary(str(self.source))
@@ -265,6 +266,17 @@ class GLBTests(unittest.TestCase):
         self.assertEqual(out.materials[0].normalTexture.index, 0)
         animation = out.animations[-1]
         self.assertEqual(animation.name, "walk")
+        # Rest keyframe MUST reproduce each source glTF local bind rotation.
+        for channel in animation.channels:
+            if channel.target.path == "rotation":
+                values = read_accessor(out, animation.samplers[channel.sampler].output)
+                node = before.nodes[channel.target.node]
+                reference = glb_bridge._unit_quaternion(
+                    node.rotation if node.rotation else [0, 0, 0, 1])
+                self.assertAlmostEqual(abs(float(values[0] @ reference)), 1., places=5)
+            if channel.target.path == "translation":
+                values = read_accessor(out, animation.samplers[channel.sampler].output)
+                np.testing.assert_allclose(values[1], [.2, 0, 0], atol=1e-6)
         self.assertEqual(len(animation.channels), 3)  # 2 rotations and 1 root translation
         for ch in animation.channels:
             if ch.target.path == "rotation":
