@@ -499,7 +499,9 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     if [m.to_dict() for m in gltf.materials] != original_materials:
         changed.append("materials")
     if [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes] != original_primitives:
-        changed.append("mesh primitives")
+        observed = [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes]
+        changed.append("mesh primitives: expected=" + repr(original_primitives)[:1200]
+                       + ", observed=" + repr(observed)[:1200])
     if [skin.to_dict() for skin in gltf.skins] != original_skin:
         changed.append("skins")
     if [a.to_dict() for a in gltf.accessors[:len(original_accessors)]] != original_accessors:
