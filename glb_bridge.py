@@ -7,6 +7,7 @@ damage skinning. Original mesh, material and buffer-view payloads are untouched.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 import math
 import re
 from dataclasses import dataclass
@@ -423,7 +424,7 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     # and materials remain untouched. New animation data only ever appends.
     original_views = [v.to_dict() for v in gltf.bufferViews]
     original_materials = [m.to_dict() for m in gltf.materials]
-    original_primitives = [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes]
+    original_primitives = [[asdict(p) for p in mesh.primitives] for mesh in gltf.meshes]
     original_skin = [s.to_dict() for s in gltf.skins]
     original_accessors = [a.to_dict() for a in gltf.accessors]
     nframes = delta.shape[0]
@@ -498,10 +499,8 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     changed = []
     if [m.to_dict() for m in gltf.materials] != original_materials:
         changed.append("materials")
-    if [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes] != original_primitives:
-        observed = [[p.to_dict() for p in mesh.primitives] for mesh in gltf.meshes]
-        changed.append("mesh primitives: expected=" + repr(original_primitives)[:1200]
-                       + ", observed=" + repr(observed)[:1200])
+    if [[asdict(p) for p in mesh.primitives] for mesh in gltf.meshes] != original_primitives:
+        changed.append("mesh primitives")
     if [skin.to_dict() for skin in gltf.skins] != original_skin:
         changed.append("skins")
     if [a.to_dict() for a in gltf.accessors[:len(original_accessors)]] != original_accessors:
@@ -519,7 +518,7 @@ def bake_motion(source_glb_path: str | Path, motion_path: str | Path,
     check = GLTF2().load_binary(str(tmp))
     if ((check.binary_blob() or b"")[:len(original)] != original or
         [m.to_dict() for m in check.materials] != original_materials or
-        [[p.to_dict() for p in mesh.primitives] for mesh in check.meshes] != original_primitives or
+        [[asdict(p) for p in mesh.primitives] for mesh in check.meshes] != original_primitives or
         [s.to_dict() for s in check.skins] != original_skin):
         tmp.unlink(missing_ok=True)
         raise RuntimeError("Serialized GLB failed original-data preservation check.")
